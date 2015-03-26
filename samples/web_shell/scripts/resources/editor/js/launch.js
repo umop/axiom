@@ -69,6 +69,20 @@ function setupVisualization(editor) {
     editor.getSession().unfold(2, true);
     var content = editor.session.getValue()
     // var re = /\/\*\* @type \{([A-Za-z_$.]+)\} ?\*\/\n(\s*)var/g;
+    var re = /for \(var ([a-zA-Z_$]+) *\= *([-a-zA-Z$0-9.]+) *; *([a-zA-Z_$]+) *([<=>]+) *([-a-zA-Z$0-9.]+) *; *([a-zA-Z_$]+)(--|\+\+) *\)/g;
+    while(m = re.exec(content)) {
+      var annotationStartIndex = m.index
+      var annotationEndIndex = m[0].length + annotationStartIndex;
+      var startPosition = editor.session.getDocument().indexToPosition(annotationStartIndex)
+      var endPosition = editor.session.getDocument().indexToPosition(annotationEndIndex)
+      var endValue = m[5];
+      var placeholder = " loop " + m[1] + " : " + m[2] + " \u279C " + endValue + " ";
+      var markerRange = new Range(startPosition.row, startPosition.column, endPosition.row, endPosition.column);
+      placeholder = new Fold(markerRange, placeholder)
+      placeholder.subType = "if_statement";
+      editor.session.addFold(placeholder, markerRange);
+    }
+
     var re = /(|\/\*\* @type \{([^}]+)\} ?\*\/\n(\s*))\bvar /g;
     while(m = re.exec(content)) {
       var annotationStartIndex = m.index
@@ -91,20 +105,6 @@ function setupVisualization(editor) {
       // editor.session.addMarker(markerRange, "ace_selected-word", "text");
     }
 
-    re = /for \(var ([a-zA-Z_$]+) *\= *([-a-zA-Z$0-9.]+) *; *([a-zA-Z_$]+) *([<=>]+) *([-a-zA-Z$0-9.]+) *; *([a-zA-Z_$]+)(--|\+\+) *\) * \n?\s*\{/g;
-    while(m = re.exec(content)) {
-      var annotationStartIndex = m.index
-      var annotationEndIndex = m[0].length + annotationStartIndex;
-      var startPosition = editor.session.getDocument().indexToPosition(annotationStartIndex)
-      var endPosition = editor.session.getDocument().indexToPosition(annotationEndIndex)
-      var endValue = m[5];
-      var placeholder = " " + m[1] + " \u279C " + m[2] + " .. " + endValue;
-      var markerRange = new Range(startPosition.row, startPosition.column, endPosition.row, endPosition.column);
-      placeholder = new Fold(range, placeholder)
-      placeholder.subType = "if_statement";
-      editor.session.addFold(placeholder, markerRange);
-    }
-
   });
 
   editor.session.addEventListener("changeFold", function(e) {
@@ -113,7 +113,11 @@ function setupVisualization(editor) {
       e.preventDefault();
       e.stopPropagation();
       var range = e.data.range;
-      editor.session.addFold(e.data.placeholder, range);
+      try {
+        editor.session.addFold(e.data, range);
+      } catch (e) {
+
+      }
       // window.prompt("Type");
       return false;
     }
