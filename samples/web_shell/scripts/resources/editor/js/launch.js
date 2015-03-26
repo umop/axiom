@@ -76,7 +76,7 @@ function setupVisualization(editor) {
       var startPosition = editor.session.getDocument().indexToPosition(annotationStartIndex)
       var endPosition = editor.session.getDocument().indexToPosition(annotationEndIndex)
       var endValue = m[5];
-      var placeholder = " loop " + m[1] + " : " + m[2] + " \u279C " + endValue + " ";
+      var placeholder = " \u25B6 loop " + m[1] + " : " + m[2] + " \u279C " + endValue + " \u2630 ";
       var markerRange = new Range(startPosition.row, startPosition.column, endPosition.row, endPosition.column);
       placeholder = new Fold(markerRange, placeholder)
       placeholder.subType = "if_statement";
@@ -98,7 +98,7 @@ function setupVisualization(editor) {
         subType = "blank_type_annotation";
 
       }
-      var placeholder = " " + typeName + " \u25BC ";
+      var placeholder = " \u25B6 " + typeName + " \u2630 ";
       placeholder = new Fold(markerRange, placeholder)
               placeholder.subType = subType;
       editor.session.addFold(placeholder, markerRange);
