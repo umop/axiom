@@ -1,0 +1,20 @@
+<html>
+<head>
+<script src="https://cdn.rawgit.com/jquery/esprima/1.2/esprima.js"></script>
+<script>
+var syntax = esprima.parse('var answer = 42');
+	
+</script>
+</head>
+<body>
+
+</body>
+</html>
+
+<!-- Since Esprima supports AMD (Asynchronous Module Definition), it can be loaded via a module loader such as RequireJS:
+
+require(['esprima'], function (parser) {
+    // Do something with parser, e.g.
+    var syntax = parser.parse('var answer = 42');
+    console.log(JSON.stringify(syntax, null, 4));
+}); -->

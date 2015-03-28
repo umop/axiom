@@ -1,0 +1,206 @@
+var s = "// Copyright 2015 Google Inc. All rights reserved.\n" +
+"//\n" +
+"// Licensed under the Apache License, Version 2.0 (the License);\n" +
+"// you may not use this file except in compliance with the License.\n" +
+"// You may obtain a copy of the License at\n" +
+"//\n" +
+"//     http://www.apache.org/licenses/LICENSE-2.0\n" +
+"//\n" +
+"// Unless required by applicable law or agreed to in writing, software\n" +
+"// distributed under the License is distributed on an AS IS BASIS,\n" +
+"// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\n" +
+"// See the License for the specific language governing permissions and\n" +
+"// limitations under the License.\n" +
+"\n" +
+"/** @typedef ExecuteContext$$module$axiom$fs$base$execute_context */\n" +
+"var ExecuteContext;\n" +
+"\n" +
+"/** @typedef FileSystemManager$$module$axiom$fs$base$file_system_manager */\n" +
+"var FileSystemManager;\n" +
+"\n" +
+"/**\n" +
+" * @param {ExecuteContext} cx\n" +
+" *\n" +
+" * @return {void}\n" +
+" */\n" +
+" var main = function(cx) {\n" +
+"  cx.ready();\n" +
+"\n" +
+"  /** @type {Array<string>} */\n" +
+"  var list = cx.getArg('_', []);\n" +
+"  if (list.length > 1 || cx.getArg('help')) {\n" +
+"    cx.stdout.write([\n" +
+"      'usage: import [<target>]',\n" +
+"      'Import a directory from the local file system.',\n" +
+"      '',\n" +
+"      'If <target> is provided, the directory will be imported there.  If not,',\n" +
+"      'it will be imported into the current directory.'\n" +
+"    ].join('') + '');\n" +
+"    cx.closeOk();\n" +
+"    return;\n" +
+"  }\n" +
+"\n" +
+"  /** @type {string} */\n" +
+"  var pathSpec = list.length ? list.shift() : '.';\n" +
+"  /** @type {string} */\n" +
+"  var pwd = cx.getPwd();\n" +
+"  /** @type {Path} */\n" +
+"  var path = Path.abs(pwd, pathSpec);\n" +
+"\n" +
+"  /** @type {ImportCommand} */\n" +
+"  var command = new ImportCommand(cx);\n" +
+"\n" +
+"  // NOTE: cx will get closed in ImportCommand.prototype.handleFileSelect_().\n" +
+"  command.import(path);\n" +
+"};\n" +
+"\n" +
+"  main;\n" +
+"\n" +
+"main.signature = {\n" +
+"  'help|h': '?',\n" +
+"  '_': '@'\n" +
+"};\n" +
+"\n" +
+"/**\n" +
+" * @constructor\n" +
+" * Import a directory of files for use in wash.\n" +
+" *\n" +
+" * @param {ExecuteContext} executeContext\n" +
+" */\n" +
+"var ImportCommand = function(cx) {\n" +
+"  /** @type {Path} The target directory of the import*/\n" +
+"  this.destination = null;\n" +
+"\n" +
+"  /** @private @type {ExecuteContext} */\n" +
+"  this.cx_ = cx;\n" +
+"\n" +
+"  /** @private @type {FileSystemManager} */\n" +
+"  this.fsm_ = cx.fileSystemManager;\n" +
+"\n" +
+"  /** @private @type {Element} */\n" +
+"  this.input_ = null;\n" +
+"};\n" +
+"\n" +
+"/**\n" +
+" * Prompt the user to import a directory or file\n" +
+" *\n" +
+" * @param {Path} Destination path\n" +
+" * @return {void}\n" +
+" */\n" +
+"ImportCommand.prototype.import = function(destination) {\n" +
+"  this.destination = destination;\n" +
+"\n" +
+"  /** @type {Element} */\n" +
+"  var input = document.createElement('input');\n" +
+"  input.setAttribute('type', 'file');\n" +
+"  input.setAttribute('webkitdirectory', '');\n" +
+"  input.setAttribute('multiple', 'webkitdirectory');\n" +
+"  input.style.cssText =\n" +
+"      'position: absolute;' +\n" +
+"      'right: 0';\n" +
+"\n" +
+"  this.input_ = input;\n" +
+"\n" +
+"  input.addEventListener('change', this.handleFileSelect_.bind(this), false);\n" +
+"\n" +
+"  document.body.appendChild(input);\n" +
+"\n" +
+"  input.click();\n" +
+"};\n" +
+"\n" +
+"/**\n" +
+" * Mkdir, including parent directories\n" +
+" * @private\n" +
+" * @param {Path} path\n" +
+" * @return {Promise}\n" +
+" */\n" +
+"ImportCommand.prototype.mkdirParent_ = function(path) {\n" +
+"  var parentPath = path.getParentPath();\n" +
+"  if (parentPath === null) return Promise.resolve(null);\n" +
+"  return this.mkdirParent_(parentPath).then(function() {\n" +
+"    return this.fsm_.mkdir(path).catch(function (e) {\n" +
+"      if (AxiomError.Duplicate.test(e)) {\n" +
+"        return Promise.resolve();\n" +
+"      }\n" +
+"      return Promise.reject(e);\n" +
+"    });\n" +
+"  }.bind(this));\n" +
+"};\n" +
+"\n" +
+"/**\n" +
+" * Handle the selection of a file on this.input_\n" +
+" *\n" +
+" * @private\n" +
+" * @param {Event} evt\n" +
+" * @return {void}\n" +
+" */\n" +
+"ImportCommand.prototype.handleFileSelect_ = function(evt) {\n" +
+"  /** @type {FileList} */\n" +
+"  var files = evt.target.files;\n" +
+"\n" +
+"  /** @type {!Array<Promise>} */\n" +
+"  var copyPromises = [];\n" +
+"\n" +
+"  var onFileLoad = function(data, evt) {\n" +
+"    /** @type {ArrayBuffer|Blob|string} */\n" +
+"    var fileContent = evt.target.result;\n" +
+"\n" +
+"    /** @type {Path} */\n" +
+"    var path = data.path;\n" +
+"\n" +
+"    /** @type {Completer} */\n" +
+"    var fileCompleter = data.completer;\n" +
+"\n" +
+"    var parentDirectory = path.getParentPath();\n" +
+"    this.fsm_.stat(parentDirectory).catch(function(e) {\n" +
+"      if (AxiomError.NotFound.test(e)) {\n" +
+"        return this.mkdirParent_(parentDirectory);\n" +
+"      }\n" +
+"      return Promise.reject(e);\n" +
+"    }.bind(this)).then(function(result) {\n" +
+"      return this.fsm_.writeFile(path, DataType.Value, fileContent);\n" +
+"    }.bind(this)).then(function() {\n" +
+"      fileCompleter.resolve(null);\n" +
+"    }.bind(this)).catch(function(e) {\n" +
+"      fileCompleter.resolve(e);\n" +
+"    });\n" +
+"  };\n" +
+"\n" +
+"  for (var i = 0; i < files.length; i++) {\n" +
+"    /** @type {!File} */\n" +
+"    var f = files[i];\n" +
+"\n" +
+"    var path = Path.abs(this.destination.spec,\n" +
+"        /** @type {{webkitRelativePath: string}} */(f).webkitRelativePath);\n" +
+"\n" +
+"    var reader = new FileReader();\n" +
+"\n" +
+"    /** @type {Completer} */\n" +
+"    var fileCompleter = new Completer();\n" +
+"\n" +
+"    /** @type {{path:Path, completer:Completer}} */\n" +
+"    var data = {\n" +
+"      path: path,\n" +
+"      completer: fileCompleter\n" +
+"    };\n" +
+"\n" +
+"    reader.onload = onFileLoad.bind(this, data);\n" +
+"\n" +
+"    copyPromises.push(fileCompleter.promise);\n" +
+"\n" +
+"    reader.readAsBinaryString(f);\n" +
+"  }\n" +
+"\n" +
+"  Promise.all(copyPromises).then(function (values) {\n" +
+"    document.body.removeChild(this.input_);\n" +
+"\n" +
+"    /** @type {Array<Error>} */\n" +
+"    var errors = values.filter(function(element) { return element !== null; });\n" +
+"\n" +
+"    if (errors.length === 0) {\n" +
+"      this.cx_.closeOk();\n" +
+"    } else {\n" +
+"      this.cx_.closeError(new AxiomError.Unknown(errors));\n" +
+"    }\n" +
+"  }.bind(this));\n" +
+"};\n";
