@@ -25,7 +25,7 @@ window.onload = function() {
       editor = ace.edit("editor");
       Fold = fold.Fold;
       // editor.setTheme("ace/theme/monokai");
-      // editor.getSession().setMode("ace/mode/javascript");
+      editor.getSession().setMode("ace/mode/javascript");
         var event = new Event('ready');
         event.initEvent('ready', false, false);
         this.dispatchEvent(event);
@@ -125,7 +125,8 @@ this.setupVisualization = function (editor) {
           var startIndex = editor.session.getDocument().positionToIndex(e.data.start);
           var endIndex = editor.session.getDocument().positionToIndex(e.data.end);
           var annotationText = content.substr(startIndex, endIndex);
-          var re = /(@type \{)([^}]+)\}/;
+          // var re = /(@type \{)([^}]+)\}/;
+          var re = /(|\/\*\* @type \{[^}]+\} ?\*\/\n\s*\b)(var)/g;
           m = re.exec(annotationText)
           var introLength = m[1].length;
           var typeName = m[2];
@@ -134,7 +135,7 @@ this.setupVisualization = function (editor) {
           var startPosition = editor.session.getDocument().indexToPosition(annotationStartIndex)
           var endPosition = editor.session.getDocument().indexToPosition(annotationEndIndex)
           var markerRange = new Range(startPosition.row, startPosition.column, endPosition.row, endPosition.column);
-          var placeholder = " \u25C0 " + typeName + " ";
+          var placeholder = "" + typeName + "";
           placeholder = new Fold(markerRange, placeholder)
           placeholder.subType = 'unfolded_annotation';
           editor.session.addFold(placeholder, markerRange);
