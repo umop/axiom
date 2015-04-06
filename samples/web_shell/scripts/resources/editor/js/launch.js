@@ -16,7 +16,11 @@
 var Fold;
 this.allowNextUnfold_ = false;
 
-var Substitution = function(findRegex, reverseToken, subType,
+var Substitution = function(substitutor) {
+  this.substitutor = substitutor;
+}
+
+var Substitutor = function(findRegex, reverseToken, subType,
     matchIndex, unfoldMatchIndex) {
   this.findRegex_ = findRegex;
   this.reverseToken_ = reverseToken;
@@ -28,7 +32,7 @@ var Substitution = function(findRegex, reverseToken, subType,
   this.session_ = window.s;
 }
 
-Substitution.prototype.matchAll = function(content) {
+Substitutor.prototype.matchAll = function(content) {
   var Range = require("ace/range").Range;
 
   while(m = this.findRegex_.exec(content)) {
@@ -40,7 +44,7 @@ Substitution.prototype.matchAll = function(content) {
   }
 }
 
-Substitution.prototype.rangeFromIndexes_ = function(startIndex, endIndex) {
+Substitutor.prototype.rangeFromIndexes_ = function(startIndex, endIndex) {
   var Range = require("ace/range").Range;
   var startPosition = this.session_.getDocument().indexToPosition(startIndex)
   var endPosition = this.session_.getDocument().indexToPosition(endIndex)
@@ -50,28 +54,29 @@ Substitution.prototype.rangeFromIndexes_ = function(startIndex, endIndex) {
   return range
 }
 
-Substitution.prototype.createSubstitution = function(markerRange, value) {
+Substitutor.prototype.createSubstitution = function(markerRange, value,
+    substitution) {
   if (this.session_.getFoldsInRange(markerRange).length == 0) {
     var typeName = value;
     // var placeholder = " \u25B6 " + value + " \u2630 ";
     var placeholder = " \u25B6 " + value + " ";
     var fold = new Fold(markerRange, placeholder)
     fold.subType = this.subType_;
-    fold.substitution = this;
+    fold.substitution = substitution ? substitution : new Substitution(this);
     this.session_.addFold(fold, markerRange);
     // this.session_.addMarker(markerRange, "ace_selected-word", "text");
   }
 }
 
-// Substitution.prototype.findTop_ = function(content) {}
+// Substitutor.prototype.findTop_ = function(content) {}
 
-Substitution.prototype.getUnfoldedToken_ = function(annotationText) {
+Substitutor.prototype.getUnfoldedToken_ = function(annotationText) {
   m = /(\S*)/g.exec(annotationText)
   var label = m[1];
   return {label: label, start: 0, end: label.length};
 }
 
-Substitution.prototype.expand = function(fold) {
+Substitutor.prototype.expand = function(fold) {
   var Range = require("ace/range").Range;
   var content = this.session_.getValue();
   var startIndex = this.session_.getDocument().positionToIndex(fold.start);
@@ -86,7 +91,7 @@ Substitution.prototype.expand = function(fold) {
     m = this.findRegex_.exec(content);
     var start = m.index;
     var range = this.rangeFromIndexes_(start, m[0].length + start - 1);
-    this.createSubstitution(range, m[this.matchIndex_]);
+    this.createSubstitution(range, m[this.matchIndex_], fold.substitution);
 
     // m = this.findRegex_.exec(content)
     // var start = m.index;
@@ -106,47 +111,45 @@ Substitution.prototype.expand = function(fold) {
         endPosition.row, endPosition.column);
     var placeholder = "" + unfoldInfo.label + "";
     this.session_.removeFold(fold);
-    var fold = new Fold(markerRange, placeholder)
-    fold.subType = 'unfolded_' + this.subType_;
-    fold.substitution = this;
-    this.session_.addFold(fold, markerRange);
+    var newFold = new Fold(markerRange, placeholder)
+    newFold.subType = 'unfolded_' + this.subType_;
+    newFold.substitution = fold.substitution;
+    this.session_.addFold(newFold, markerRange);
   }
   return false;
 }
 
 /**
- * @constructor @extends {Substitution}
+ * @constructor @extends {Substitutor}
  */
-var VarSubstitution = function(findRegex, reverseToken, subType,
+var TypeVarSubstitutor = function(reverseToken, subType,
     matchIndex, unfoldMatchIndex) {
-  Substitution.call(this, findRegex, reverseToken, subType, matchIndex,
-      unfoldMatchIndex);
+  var findRegex = /(\/\*\* @type \{([^}]+)\} ?\*\/\n(\s*))\b(var) /g;
+  Substitutor.call(this, findRegex, '/**', 'type_annotation', 2, 4);
 }
 
-VarSubstitution.prototype = Object.create(Substitution.prototype);
+TypeVarSubstitutor.prototype = Object.create(Substitutor.prototype);
 
-VarSubstitution.prototype.getUnfoldedToken_ = function(annotationText) {
-  var re = /(|\/\*\* @type \{[^}]+\} ?\*\/\n\s*\b)(var)/g;
+TypeVarSubstitutor.prototype.getUnfoldedToken_ = function(annotationText) {
+  var re = /(\/\*\* @type \{[^}]+\} ?\*\/\n\s*\b)(var)/g;
   m = re.exec(annotationText)
   var introLength = m[1].length;
-  var typeName = m[2];
+  var varKeyword = m[2];
   var annotationStartIndex = m.index + introLength;
-  return {label: typeName, start: annotationStartIndex,
-      end: annotationStartIndex + typeName.length};
+  return {label: varKeyword, start: annotationStartIndex,
+      end: annotationStartIndex + varKeyword.length};
 }
 
-VarSubstitution.prototype.createSubstitution = function(markerRange, value) {
-  if (value !== undefined) {
-    return Substitution.prototype.createSubstitution.call(this, markerRange,
-        value);
-  } else {
-    this.subType_ = "blank_type_annotation";
-    return Substitution.prototype.createSubstitution.call(this, markerRange,
-        'var');
-  }
-
+/**
+ * @constructor @extends {Substitutor}
+ */
+var VarSubstitutor = function(reverseToken, subType,
+    matchIndex, unfoldMatchIndex) {
+  var findRegex = /\b(var) /g;
+  Substitutor.call(this, findRegex, 'var', 'blank_type_annotation', 1, 1);
 }
 
+VarSubstitutor.prototype = Object.create(Substitutor.prototype);
 
 var Vide = function() {
   this.typeSub_ = null;
@@ -187,7 +190,7 @@ var Vide = function() {
 
     this.editor_ = window.aceEditor = editor;
     this.session_ = window.s = editor.getSession();
-    this.initSubstitutions_();
+    this.initSubstitutors_();
 
     this.setupVisualization_(editor);
   }.bind(this));
@@ -200,9 +203,9 @@ var Vide = function() {
 }
 
 
-Vide.prototype.initSubstitutions_ = function() {
-  var re = /(|\/\*\* @type \{([^}]+)\} ?\*\/\n(\s*))\b(var) /g;
-  this.typeSub_ = new VarSubstitution(re, '/**', 'type_annotation', 2, 4);
+Vide.prototype.initSubstitutors_ = function() {
+  this.typeSub_ = new TypeVarSubstitutor();
+  this.varSub_ = new VarSubstitutor();
 }
 
 Vide.prototype.setupVisualization_ = function(editor) {
@@ -234,6 +237,7 @@ Vide.prototype.setupVisualization_ = function(editor) {
     // }
 
     this.typeSub_.matchAll(content);
+    this.varSub_.matchAll(content);
   }.bind(this));
 /*
   this.session_.addEventListener("changeFold", function(e) {
@@ -289,7 +293,7 @@ Vide.prototype.setupVisualization_ = function(editor) {
 
 Vide.prototype.onCollapsedFoldWidgetClick_ = function(fold, e) {
   console.log(fold.substitution);
-  fold.substitution.expand(fold);
+  fold.substitution.substitutor.expand(fold);
 };
 
 
