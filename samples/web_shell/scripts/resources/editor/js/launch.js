@@ -16,45 +16,292 @@
 var Fold;
 this.allowNextUnfold_ = false;
 
-window.onload = function() {
+var Substitution = function(findRegex, reverseToken, subType,
+    matchIndex, unfoldMatchIndex) {
+  this.findRegex_ = findRegex;
+  this.reverseToken_ = reverseToken;
+  this.subType_ = subType;
+  this.matchIndex_ = matchIndex;
+  this.unfoldMatchIndex_ = unfoldMatchIndex;
+
+  this.editor_ = window.aceEditor;
+  this.session_ = window.s;
+}
+
+Substitution.prototype.matchAll = function(content) {
+  var Range = require("ace/range").Range;
+
+  while(m = this.findRegex_.exec(content)) {
+    var start = m.index;
+    var range = this.rangeFromIndexes_(start, m[0].length + start - 1);
+    if (this.session_.getFoldsInRange(range).length == 0) {
+      this.createSubstitution(range, m[this.matchIndex_]);
+    }
+  }
+}
+
+Substitution.prototype.rangeFromIndexes_ = function(startIndex, endIndex) {
+  var Range = require("ace/range").Range;
+  var startPosition = this.session_.getDocument().indexToPosition(startIndex)
+  var endPosition = this.session_.getDocument().indexToPosition(endIndex)
+  var range = new Range(startPosition.row, startPosition.column,
+      endPosition.row, endPosition.column);
+  console.log(this.session_.getFoldsInRange(range));
+  return range
+}
+
+Substitution.prototype.createSubstitution = function(markerRange, value) {
+  if (this.session_.getFoldsInRange(markerRange).length == 0) {
+    var typeName = value;
+    // var placeholder = " \u25B6 " + value + " \u2630 ";
+    var placeholder = " \u25B6 " + value + " ";
+    var fold = new Fold(markerRange, placeholder)
+    fold.subType = this.subType_;
+    fold.substitution = this;
+    this.session_.addFold(fold, markerRange);
+    // this.session_.addMarker(markerRange, "ace_selected-word", "text");
+  }
+}
+
+// Substitution.prototype.findTop_ = function(content) {}
+
+Substitution.prototype.getUnfoldedToken_ = function(annotationText) {
+  m = /(\S*)/g.exec(annotationText)
+  var label = m[1];
+  return {label: label, start: 0, end: label.length};
+}
+
+Substitution.prototype.expand = function(fold) {
+  var Range = require("ace/range").Range;
+  var content = this.session_.getValue();
+  var startIndex = this.session_.getDocument().positionToIndex(fold.start);
+  var endIndex = this.session_.getDocument().positionToIndex(fold.end);
+  //TODO (ericarnold): This should be done by setting .lastIndex of regex.
+  var foldText = content.substr(startIndex, endIndex);
+  if (fold.subType == 'unfolded_' + this.subType_) {
+    var doc = this.session_.getDocument();
+    var row = fold.start.row;
+    this.findRegex_.lastIndex = content.lastIndexOf(this.reverseToken_, endIndex);
+    this.session_.removeFold(fold);
+    m = this.findRegex_.exec(content);
+    var start = m.index;
+    var range = this.rangeFromIndexes_(start, m[0].length + start - 1);
+    this.createSubstitution(range, m[this.matchIndex_]);
+
+    // m = this.findRegex_.exec(content)
+    // var start = m.index;
+    // var range = this.rangeFromIndexes_(start, m[0].length + start - 1);
+    // this.createSubstitution(range, m[this.matchIndex_]);
+
+    // this.createSubstitution(this.rangeFromIndexes_(annotationStartIndex,
+    //     endIndex), this.subType_);
+  } else {
+    var unfoldInfo = this.getUnfoldedToken_(foldText);
+    // var re = /(@type \{)([^}]+)\}/;
+    var startPosition = this.session_.getDocument().indexToPosition(
+        startIndex + unfoldInfo.start)
+    var endPosition = this.session_.getDocument().indexToPosition(startIndex +
+        unfoldInfo.end);
+    var markerRange = new Range(startPosition.row, startPosition.column,
+        endPosition.row, endPosition.column);
+    var placeholder = "" + unfoldInfo.label + "";
+    this.session_.removeFold(fold);
+    var fold = new Fold(markerRange, placeholder)
+    fold.subType = 'unfolded_' + this.subType_;
+    fold.substitution = this;
+    this.session_.addFold(fold, markerRange);
+  }
+  return false;
+}
+
+/**
+ * @constructor @extends {Substitution}
+ */
+var VarSubstitution = function(findRegex, reverseToken, subType,
+    matchIndex, unfoldMatchIndex) {
+  Substitution.call(this, findRegex, reverseToken, subType, matchIndex,
+      unfoldMatchIndex);
+}
+
+VarSubstitution.prototype = Object.create(Substitution.prototype);
+
+VarSubstitution.prototype.getUnfoldedToken_ = function(annotationText) {
+  var re = /(|\/\*\* @type \{[^}]+\} ?\*\/\n\s*\b)(var)/g;
+  m = re.exec(annotationText)
+  var introLength = m[1].length;
+  var typeName = m[2];
+  var annotationStartIndex = m.index + introLength;
+  return {label: typeName, start: annotationStartIndex,
+      end: annotationStartIndex + typeName.length};
+}
+
+VarSubstitution.prototype.createSubstitution = function(markerRange, value) {
+  if (value !== undefined) {
+    return Substitution.prototype.createSubstitution.call(this, markerRange,
+        value);
+  } else {
+    this.subType_ = "blank_type_annotation";
+    return Substitution.prototype.createSubstitution.call(this, markerRange,
+        'var');
+  }
+
+}
+
+
+var Vide = function() {
+  this.typeSub_ = null;
+  this.editor_ = null;
+  this.session_ = null;
+
+  setTimeout(this.test_.bind(this), 1000);
+
   require.config({
       baseUrl: "http://acejs.localhost"
   });
+
   var editor;
   require(["ace/ace", "ace/edit_session/fold"], function (ace, fold) {
-      editor = ace.edit("editor");
-      Fold = fold.Fold;
-      // editor.setTheme("ace/theme/monokai");
-      editor.getSession().setMode("ace/mode/javascript");
-        var event = new Event('ready');
-        event.initEvent('ready', false, false);
-        this.dispatchEvent(event);
+    editor = ace.edit("editor");
+    Fold = fold.Fold;
+    // editor.setTheme("ace/theme/monokai");
+    editor.getSession().setMode("ace/mode/javascript");
+    var event = new Event('ready');
+    event.initEvent('ready', false, false);
+    window.dispatchEvent(event);
 
-        editor.focus();
-        editor.commands.addCommand({
-          name: 'saveFile',
-          bindKey: {
-            win: 'Ctrl-S',
-            mac: 'Command-S',
-            sender: 'editor|cli'
-          },
-          exec: (function(editor, args, request) {
-            var event = new Event('save');
-            event.initEvent('save', false, false);
-            event.target = this;
-            this.dispatchEvent(event);
-          }).bind(this)
-        });
+    editor.focus();
+    editor.commands.addCommand({
+      name: 'saveFile',
+      bindKey: {
+        win: 'Ctrl-S',
+        mac: 'Command-S',
+        sender: 'editor|cli'
+      },
+      exec: (function(editor, args, request) {
+        var event = new Event('save');
+        event.initEvent('save', false, false);
+        event.target = this;
+        window.dispatchEvent(event);
+      }).bind(this)
+    });
 
-        setupVisualization(editor);
-  });
+    this.editor_ = window.aceEditor = editor;
+    this.session_ = window.s = editor.getSession();
+    this.initSubstitutions_();
 
-  document.addEventListener('mousedown', function(e) {
-    if (e.target.classList.contains('ace_fold')) {
-      this.allowNextUnfold_ = true;
-    }
+    this.setupVisualization_(editor);
   }.bind(this));
-}.bind(this);
+
+  // document.addEventListener('mousedown', function(e) {
+  //   if (e.target.classList.contains('ace_fold')) {
+  //     this.allowNextUnfold_ = true;
+  //   }
+  // }.bind(this));
+}
+
+
+Vide.prototype.initSubstitutions_ = function() {
+  var re = /(|\/\*\* @type \{([^}]+)\} ?\*\/\n(\s*))\b(var) /g;
+  this.typeSub_ = new VarSubstitution(re, '/**', 'type_annotation', 2, 4);
+}
+
+Vide.prototype.setupVisualization_ = function(editor) {
+  this.session_.onCollapsedFoldWidgetClick =
+      this.onCollapsedFoldWidgetClick_.bind(this);
+
+  editor.on('input', function() {
+    // editor.getSession().unfold(2, true);
+    var content = this.session_.getValue()
+    // var re = /\/\*\* @type \{([A-Za-z_$.]+)\} ?\*\/\n(\s*)var/g;
+    // var re = /for \(var ([a-zA-Z_$]+) *\= *([-a-zA-Z$0-9.]+) *
+    //     ; *([a-zA-Z_$]+) *([<=>]+) *([-a-zA-Z$0-9.]+) *; *([a-zA-Z_$]+)(
+    //     --|\+\+) *\)/g;
+    // while(m = re.exec(content)) {
+    //   var annotationStartIndex = m.index
+    //   var annotationEndIndex = m[0].length + annotationStartIndex;
+    //   var startPosition = this.session_.getDocument().indexToPosition(
+    //       annotationStartIndex)
+    //   var endPosition = this.session_.getDocument().indexToPosition(
+    //       annotationEndIndex)
+    //   var endValue = m[5];
+    //   var placeholder = " \u25B6 loop " + m[1] + " : " + m[2] + " \u279C " +
+    //       endValue + " \u2630 ";
+    //   var markerRange = new Range(startPosition.row, startPosition.column,
+    //       endPosition.row, endPosition.column);
+    //   placeholder = new Fold(markerRange, placeholder)
+    //   placeholder.subType = "if_statement";
+    //   this.session_.addFold(placeholder, markerRange);
+    // }
+
+    this.typeSub_.matchAll(content);
+  }.bind(this));
+/*
+  this.session_.addEventListener("changeFold", function(e) {
+    return;
+    // console.log(e);
+    if (e.action == "remove") {
+      if (this.allowNextUnfold_) {
+        this.allowNextUnfold_ = false;
+        if (e.data.subType == 'blank_type_annotation' || e.data.subType ==
+            'type_annotation') {
+          var content = this.session_.getValue()
+          var startIndex = this.session_.getDocument().positionToIndex(
+              e.data.start);
+          var endIndex = this.session_.getDocument().positionToIndex(e.data.end);
+          var annotationText = content.substr(startIndex, endIndex);
+          // var re = /(@type \{)([^}]+)\}/;
+          var re = /(|\/\*\* @type \{[^}]+\} ?\*\/\n\s*\b)(var)/g;
+          m = re.exec(annotationText)
+          var introLength = m[1].length;
+          var typeName = m[2];
+          var annotationStartIndex = m.index + startIndex + introLength;
+          var annotationEndIndex = annotationStartIndex + typeName.length;
+          var startPosition = this.session_.getDocument().indexToPosition(
+              annotationStartIndex)
+          var endPosition = this.session_.getDocument().indexToPosition(
+              annotationEndIndex)
+          var markerRange = new Range(startPosition.row, startPosition.column,
+              endPosition.row, endPosition.column);
+          var placeholder = "" + typeName + "";
+          placeholder = new Fold(markerRange, placeholder)
+          placeholder.subType = 'unfolded_' + subType;
+          this.session_.addFold(placeholder, markerRange);
+        } else {
+          this.setupVisualization(editor);
+        }
+      } else {
+        e.preventDefault();
+        e.stopPropagation();
+        var range = e.data.range;
+        try {
+          this.session_.addFold(e.data, range);
+        } catch (e) {
+
+        }
+        // window.prompt("Type");
+        return false;
+      }
+    }
+  }.bind(this));*/
+  this.session_.setValue(
+      "//hello\n  /** @type {string} */\n  var pathSpec = 'hello'")
+};
+
+Vide.prototype.onCollapsedFoldWidgetClick_ = function(fold, e) {
+  console.log(fold.substitution);
+  fold.substitution.expand(fold);
+};
+
+
+Vide.prototype.test_ = function() {
+  var fold = document.getElementsByClassName('ace_fold')[0]
+  //fold.mouseDown();
+  console.log(fold)
+}
+
+window.onload = function() {
+  this.vide_ = new Vide();
+}
 
 if (window.opener && window.opener.onEditorWindowOpened) {
   window.opener.onEditorWindowOpened();
@@ -70,91 +317,4 @@ function getContents() {
   return session.getValue();
 }
 
-this.setupVisualization = function (editor) {
-  var Range = require("ace/range").Range;
 
-  editor.on('input', function() {
-    editor.getSession().unfold(2, true);
-    var content = editor.session.getValue()
-    // var re = /\/\*\* @type \{([A-Za-z_$.]+)\} ?\*\/\n(\s*)var/g;
-    var re = /for \(var ([a-zA-Z_$]+) *\= *([-a-zA-Z$0-9.]+) *; *([a-zA-Z_$]+) *([<=>]+) *([-a-zA-Z$0-9.]+) *; *([a-zA-Z_$]+)(--|\+\+) *\)/g;
-    while(m = re.exec(content)) {
-      var annotationStartIndex = m.index
-      var annotationEndIndex = m[0].length + annotationStartIndex;
-      var startPosition = editor.session.getDocument().indexToPosition(annotationStartIndex)
-      var endPosition = editor.session.getDocument().indexToPosition(annotationEndIndex)
-      var endValue = m[5];
-      var placeholder = " \u25B6 loop " + m[1] + " : " + m[2] + " \u279C " + endValue + " \u2630 ";
-      var markerRange = new Range(startPosition.row, startPosition.column, endPosition.row, endPosition.column);
-      placeholder = new Fold(markerRange, placeholder)
-      placeholder.subType = "if_statement";
-      editor.session.addFold(placeholder, markerRange);
-    }
-
-    var re = /(|\/\*\* @type \{([^}]+)\} ?\*\/\n(\s*))\bvar /g;
-    while(m = re.exec(content)) {
-      var annotationStartIndex = m.index
-      var annotationEndIndex = m[0].length + annotationStartIndex - 1;
-      var startPosition = editor.session.getDocument().indexToPosition(annotationStartIndex)
-      var endPosition = editor.session.getDocument().indexToPosition(annotationEndIndex)
-      var markerRange = new Range(startPosition.row, startPosition.column, endPosition.row, endPosition.column);
-      var typeName = m[2];
-      var subType = "type_annotation";
-      if (typeName === undefined) {
-        typeName = "var";
-      } else {
-        subType = "blank_type_annotation";
-
-      }
-      // var placeholder = " \u25B6 " + typeName + " \u2630 ";
-      var placeholder = " \u25B6 " + typeName + " ";
-      placeholder = new Fold(markerRange, placeholder)
-              placeholder.subType = subType;
-      editor.session.addFold(placeholder, markerRange);
-      // editor.session.addMarker(markerRange, "ace_selected-word", "text");
-    }
-  });
-
-  editor.session.addEventListener("changeFold", function(e) {
-    console.log(e);
-    if (e.action == "remove") {
-      if (this.allowNextUnfold_) {
-        this.allowNextUnfold_ = false;
-        if (e.data.subType == 'blank_type_annotation' || e.data.subType == 'type_annotation') {
-          var content = editor.session.getValue()
-          var startIndex = editor.session.getDocument().positionToIndex(e.data.start);
-          var endIndex = editor.session.getDocument().positionToIndex(e.data.end);
-          var annotationText = content.substr(startIndex, endIndex);
-          // var re = /(@type \{)([^}]+)\}/;
-          var re = /(|\/\*\* @type \{[^}]+\} ?\*\/\n\s*\b)(var)/g;
-          m = re.exec(annotationText)
-          var introLength = m[1].length;
-          var typeName = m[2];
-          var annotationStartIndex = m.index + startIndex + introLength;
-          var annotationEndIndex = annotationStartIndex + typeName.length;
-          var startPosition = editor.session.getDocument().indexToPosition(annotationStartIndex)
-          var endPosition = editor.session.getDocument().indexToPosition(annotationEndIndex)
-          var markerRange = new Range(startPosition.row, startPosition.column, endPosition.row, endPosition.column);
-          var placeholder = "" + typeName + "";
-          placeholder = new Fold(markerRange, placeholder)
-          placeholder.subType = 'unfolded_annotation';
-          editor.session.addFold(placeholder, markerRange);
-        } else {
-          this.setupVisualization(editor);
-        }
-      } else {
-        e.preventDefault();
-        e.stopPropagation();
-        var range = e.data.range;
-        try {
-          editor.session.addFold(e.data, range);
-        } catch (e) {
-
-        }
-        // window.prompt("Type");
-        return false;
-      }
-    }
-  }.bind(this));
-  editor.session.setValue("//hello\n  /** @type {string} */\n  var pathSpec = 'hello'")
-}.bind(this);
