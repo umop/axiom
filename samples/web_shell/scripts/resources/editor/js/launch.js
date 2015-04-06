@@ -36,12 +36,17 @@ Substitutor.prototype.matchAll = function(content) {
   var Range = require("ace/range").Range;
 
   while(m = this.findRegex_.exec(content)) {
-    var start = m.index;
-    var range = this.rangeFromIndexes_(start, m[0].length + start - 1);
+    var info = this.getFoldToken_(m.index, content, m);
+    var range = this.rangeFromIndexes_(info.start, info.end);
     if (this.session_.getFoldsInRange(range).length == 0) {
-      this.createSubstitution(range, m[this.matchIndex_]);
+      this.createSubstitution(range, info.label);
     }
   }
+}
+
+Substitutor.prototype.getFoldToken_ = function(startIndex, content, match) {
+  return {label: m[this.matchIndex_], start: startIndex,
+      end: m[0].length + startIndex - 1};
 }
 
 Substitutor.prototype.rangeFromIndexes_ = function(startIndex, endIndex) {
@@ -89,9 +94,11 @@ Substitutor.prototype.expand = function(fold) {
     this.findRegex_.lastIndex = content.lastIndexOf(this.reverseToken_, endIndex);
     this.session_.removeFold(fold);
     m = this.findRegex_.exec(content);
-    var start = m.index;
-    var range = this.rangeFromIndexes_(start, m[0].length + start - 1);
-    this.createSubstitution(range, m[this.matchIndex_], fold.substitution);
+    var info = this.getFoldToken_(m.index, content, m);
+    var range = this.rangeFromIndexes_(info.start, info.end);
+    // var start = m.index;
+    // var range = this.rangeFromIndexes_(start, m[0].length + start - 1);
+    this.createSubstitution(range, info.label, fold.substitution);
 
     // m = this.findRegex_.exec(content)
     // var start = m.index;
@@ -143,6 +150,37 @@ TypeVarSubstitutor.prototype.getUnfoldedToken_ = function(annotationText) {
 /**
  * @constructor @extends {Substitutor}
  */
+var ClassSubstitutor = function(reverseToken, subType,
+    matchIndex, unfoldMatchIndex) {
+  var findRegex = /(\* @constructor)/g; // \b.*\*\/\nvar )([a-zA-Z_$][a-zA-Z_$0-9]*)
+  Substitutor.call(this, findRegex, '/**', 'class_annotation', 2, 2);
+}
+
+ClassSubstitutor.prototype = Object.create(Substitutor.prototype);
+
+ClassSubstitutor.prototype.getFoldToken_ = function(startIndex, content, match) {
+  var findRegex = /(\*\/)(\n\s*var )([a-zA-Z_$][a-zA-Z_$0-9]*)( = function\([^{]*)/g
+  findRegex.lastIndex = startIndex;
+  var m = findRegex.exec(content);
+  var annotationStart = content.lastIndexOf("/**", startIndex)
+  var foldEnd = m.index + m[1].length;
+  return {label: 'class ' + m[3] + " {", start: annotationStart, end: foldEnd};
+}
+
+
+ClassSubstitutor.prototype.getUnfoldedToken_ = function(annotationText) {
+  var re = /(\* )(@constructor)/g; // \b.*\*\/\nvar )([a-zA-Z_$][a-zA-Z_$0-9]*)
+  m = re.exec(annotationText)
+  var introLength = m[1].length;
+  var varKeyword = m[2];
+  var annotationStartIndex = m.index + introLength;
+  return {label: varKeyword, start: annotationStartIndex,
+      end: annotationStartIndex + varKeyword.length};
+}
+
+/**
+ * @constructor @extends {Substitutor}
+ */
 var VarSubstitutor = function(reverseToken, subType,
     matchIndex, unfoldMatchIndex) {
   var findRegex = /\b(var) /g;
@@ -150,6 +188,11 @@ var VarSubstitutor = function(reverseToken, subType,
 }
 
 VarSubstitutor.prototype = Object.create(Substitutor.prototype);
+
+VarSubstitutor.prototype.expand = function(fold) {
+  window.prompt('Type');
+}
+
 
 var Vide = function() {
   this.typeSub_ = null;
@@ -204,6 +247,7 @@ var Vide = function() {
 
 
 Vide.prototype.initSubstitutors_ = function() {
+  this.classSub_ = new ClassSubstitutor();
   this.typeSub_ = new TypeVarSubstitutor();
   this.varSub_ = new VarSubstitutor();
 }
@@ -236,6 +280,7 @@ Vide.prototype.setupVisualization_ = function(editor) {
     //   this.session_.addFold(placeholder, markerRange);
     // }
 
+    this.classSub_.matchAll(content);
     this.typeSub_.matchAll(content);
     this.varSub_.matchAll(content);
   }.bind(this));
