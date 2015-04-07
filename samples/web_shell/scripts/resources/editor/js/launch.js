@@ -75,8 +75,8 @@ Substitutor.prototype.createSubstitution = function(markerRange, value,
     substitution) {
   if (this.session_.getFoldsInRange(markerRange).length == 0) {
     var typeName = value;
-    // var placeholder = " \u25B6 " + value + " \u2630 ";
-    // var placeholder = " \u25B6 " + value + " ";
+    // var placeholder = "\u25B6 " + value + " \u2630 ";
+    // var placeholder = "\u25B6 " + value + " ";
     var placeholder = value;
     var fold = new Fold(markerRange, placeholder)
     fold.subType = this.subType_;
@@ -153,7 +153,7 @@ TypeVarSubstitutor.prototype = Object.create(Substitutor.prototype);
 TypeVarSubstitutor.prototype.createSubstitution = function(markerRange, value,
     substitution) {
   return Substitutor.prototype.createSubstitution.call(this,
-      markerRange, " \u25B6 " + value + " ", substitution);
+      markerRange, "\u25B6 " + value, substitution);
 }
 
 TypeVarSubstitutor.prototype.getUnfoldedToken_ = function(annotationText) {
@@ -214,7 +214,7 @@ ClassSubstitutor.prototype.findAndCreateSubstitution_ = function(content, substi
   // var range = this.rangeFromIndexes_(start, m[0].length + start - 1);
 
   if (this.session_.getFoldsInRange(range).length == 0) {
-    return this.createSubstitution(range, " \u25B6 " + label + " ", substitutor);
+    return this.createSubstitution(range, "\u25B6 " + label, substitutor);
   }
   return true;
 
