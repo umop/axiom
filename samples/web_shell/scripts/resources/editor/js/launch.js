@@ -69,15 +69,20 @@ Substitutor.prototype.rangeFromIndexes_ = function(startIndex, endIndex) {
   return range
 }
 
+$ids = 1;
+
 Substitutor.prototype.createSubstitution = function(markerRange, value,
     substitution) {
   if (this.session_.getFoldsInRange(markerRange).length == 0) {
     var typeName = value;
     // var placeholder = " \u25B6 " + value + " \u2630 ";
-    var placeholder = " \u25B6 " + value + " ";
+    // var placeholder = " \u25B6 " + value + " ";
+    var placeholder = value;
     var fold = new Fold(markerRange, placeholder)
     fold.subType = this.subType_;
     fold.substitution = substitution ? substitution : new Substitution(this);
+    fold.substitution.id = $ids++;
+    fold.id = fold.substitution.id;
     this.session_.addFold(fold, markerRange);
     // this.session_.addMarker(markerRange, "ace_selected-word", "text");
     return fold;
@@ -128,6 +133,7 @@ Substitutor.prototype.expand = function(fold) {
     var newFold = new Fold(markerRange, placeholder)
     newFold.subType = 'unfolded_' + this.subType_;
     newFold.substitution = fold.substitution;
+    newFold.id = '1';
     this.session_.addFold(newFold, markerRange);
   }
   return false;
@@ -143,6 +149,12 @@ var TypeVarSubstitutor = function(reverseToken, subType,
 }
 
 TypeVarSubstitutor.prototype = Object.create(Substitutor.prototype);
+
+TypeVarSubstitutor.prototype.createSubstitution = function(markerRange, value,
+    substitution) {
+  return Substitutor.prototype.createSubstitution.call(this,
+      markerRange, " \u25B6 " + value + " ", substitution);
+}
 
 TypeVarSubstitutor.prototype.getUnfoldedToken_ = function(annotationText) {
   var re = /(\/\*\* @type \{[^}]+\} ?\*\/\n\s*\b)(var)/g;
@@ -202,7 +214,7 @@ ClassSubstitutor.prototype.findAndCreateSubstitution_ = function(content, substi
   // var range = this.rangeFromIndexes_(start, m[0].length + start - 1);
 
   if (this.session_.getFoldsInRange(range).length == 0) {
-    return this.createSubstitution(range, label, substitutor);
+    return this.createSubstitution(range, " \u25B6 " + label + " ", substitutor);
   }
   return true;
 
@@ -220,9 +232,14 @@ var VarSubstitutor = function(reverseToken, subType,
 VarSubstitutor.prototype = Object.create(Substitutor.prototype);
 
 VarSubstitutor.prototype.expand = function(fold) {
-  // fold.contentEditable = "true";
-  // fold.focus();
-  window.vide_.findFold_(fold);
+  foldElement = window.vide_.findFold_(fold);
+  foldElement.contentEditable = "true";
+  foldElement.focus();
+  var range = document.createRange();
+  range.selectNodeContents(foldElement);
+  var sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
 }
 
 
@@ -298,16 +315,18 @@ Vide.prototype.handleChangeFold_ = function() {
 }
 
 Vide.prototype.findFold_ = function(fold) {
-  var foldElements = document.getElementsByClassName('ace_fold');
-  for (var foldIndex = 0; foldIndex < foldElements.length; foldIndex++) {
-    var fold = foldElements[foldIndex];
-    var rect = fold.getBoundingClientRect();
-    console.log(rect.top, rect.right, rect.bottom, rect.left);
+  // var foldElements = document.getElementsByClassName('ace_fold');
+  return document.getElementById('fold_' + fold.substitution.id);
+
+  // for (var foldIndex = 0; foldIndex < foldElements.length; foldIndex++) {
+  //   var fold = foldElements[foldIndex];
+  //   var rect = fold.getBoundingClientRect();
+  //   console.log(rect.top, rect.right, rect.bottom, rect.left);
 
 
     // Get the position of the fold
 
-  }
+  // }
 }
 
 Vide.prototype.handleRenderLoopDone_ = function() {
