@@ -220,7 +220,9 @@ var VarSubstitutor = function(reverseToken, subType,
 VarSubstitutor.prototype = Object.create(Substitutor.prototype);
 
 VarSubstitutor.prototype.expand = function(fold) {
-  window.prompt('Type');
+  // fold.contentEditable = "true";
+  // fold.focus();
+  window.vide_.findFold_(fold);
 }
 
 
@@ -238,6 +240,17 @@ var Vide = function() {
   var editor;
   require(["ace/ace", "ace/edit_session/fold"], function (ace, fold) {
     editor = ace.edit("editor");
+
+    this.editor_ = window.aceEditor = editor;
+    this.session_ = window.s = editor.getSession();
+
+    this.handleScrollTop_ = this.handleScrollTop_.bind(this);
+    this.session_.addEventListener("changeScrollTop", this.handleScrollTop_);
+
+    this.handleChangeFold_ = this.handleChangeFold_.bind(this);
+    this.session_.addEventListener("changeFold", this.handleChangeFold_);
+
+
     Fold = fold.Fold;
     // editor.setTheme("ace/theme/monokai");
     editor.getSession().setMode("ace/mode/javascript");
@@ -261,8 +274,6 @@ var Vide = function() {
       }).bind(this)
     });
 
-    this.editor_ = window.aceEditor = editor;
-    this.session_ = window.s = editor.getSession();
     this.initSubstitutors_();
 
     this.setupVisualization_(editor);
@@ -276,6 +287,51 @@ var Vide = function() {
 }
 
 
+Vide.prototype.handleScrollTop_ = function() {
+  this.handleRenderLoopDone_();
+
+}
+
+Vide.prototype.handleChangeFold_ = function() {
+  console.log("handleChangeFold_");
+  this.handleRenderLoopDone_();
+}
+
+Vide.prototype.findFold_ = function(fold) {
+  var foldElements = document.getElementsByClassName('ace_fold');
+  for (var foldIndex = 0; foldIndex < foldElements.length; foldIndex++) {
+    var fold = foldElements[foldIndex];
+    var rect = fold.getBoundingClientRect();
+    console.log(rect.top, rect.right, rect.bottom, rect.left);
+
+
+    // Get the position of the fold
+
+  }
+}
+
+Vide.prototype.handleRenderLoopDone_ = function() {
+  console.log("handleRenderLoopDone_");
+  // var foldElements = document.getElementsByClassName('ace_fold');
+  // for (var foldIndex = 0; foldIndex < foldElements.length; foldIndex++) {
+  //   var fold = foldElements[foldIndex];
+  //   fold.contentEditable = "true";
+  //   fold.focus();
+    // var foldChildren = fold.children
+    // for (var childIndex = 0; childIndex < foldChildren.length; childIndex++) {
+    //   var child = foldChildren[childIndex];
+    //   fold.removeChild(child);
+    // }
+    // var input = document.createElement('input');
+    // input.setAttribute('type', 'text');
+    // input.style.cssText =
+    //     'position: absolute;' +
+    //     'right: 0';
+    // fold.appendChild(input);
+    // input.focus();
+  // };
+}
+
 Vide.prototype.initSubstitutors_ = function() {
   this.classSub_ = new ClassSubstitutor();
   this.typeSub_ = new TypeVarSubstitutor();
@@ -287,12 +343,14 @@ Vide.prototype.setupVisualization_ = function(editor) {
       this.onCollapsedFoldWidgetClick_.bind(this);
 
   editor.on('input', function() {
+    console.log("input");
     // editor.getSession().unfold(2, true);
     var content = this.session_.getValue()
 
     this.classSub_.matchAll(content);
     this.typeSub_.matchAll(content);
     this.varSub_.matchAll(content);
+    this.handleRenderLoopDone_();
   }.bind(this));
 
   this.session_.setValue(
