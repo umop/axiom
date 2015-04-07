@@ -1,9 +1,42 @@
 <html>
 <head>
-<script src="https://cdn.rawgit.com/jquery/esprima/1.2/esprima.js"></script>
+<script src="/web_shell/scripts/esprima/esprima.js"></script>
 <script>
-var syntax = esprima.parse('var answer = 42');
-	
+var code = 'var answer = 42; something qwer = fasf; var a = 2;';
+code = 'var answer = 42\nsomething qwer = fasf; var a = 2;';
+// code = 'var answer = 42; var qwer = fasf\nvar a = 2;';
+
+var syntax;
+try {
+  syntax = esprima.parse(code, {
+    loc: true,
+    range: true,
+    tolerant: true,
+    comment: true,
+    raw: true,
+    tokens: true
+  });
+} catch(e) {
+  if (e.description == "Unexpected identifier") {
+    var start = e.index;
+    start = code.lastIndexOf(" ", start - 2) + 1;
+    var end = code.indexOf(" ", start);
+    var identifier = code.substr(start, length);
+    code = code.substr(0, start) + "var" + code.substr(end);
+    console.log(code);
+  }
+}
+
+  syntax = esprima.parse(code, {
+    loc: true,
+    range: true,
+    tolerant: true,
+    comment: true,
+    raw: true,
+    tokens: true
+  });
+
+console.log(syntax);
 </script>
 </head>
 <body>

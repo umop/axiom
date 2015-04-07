@@ -3174,6 +3174,7 @@
     // 12.1 Block
 
     function parseStatementListItem() {
+        console.log('parseStatementListItem');
         if (lookahead.type === Token.Keyword) {
             switch (lookahead.value) {
             case 'const':
@@ -3190,6 +3191,7 @@
     }
 
     function parseStatementList() {
+        console.log('parseStatementList');
         var list = [];
         while (startIndex < length) {
             if (match('}')) {
@@ -3832,6 +3834,8 @@
             labeledBody,
             key,
             node;
+
+        console.log('parseStatement' + lookahead.value);
 
         if (type === Token.EOF) {
             throwUnexpectedToken(lookahead);
