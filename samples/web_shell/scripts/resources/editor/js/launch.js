@@ -289,79 +289,12 @@ Vide.prototype.setupVisualization_ = function(editor) {
   editor.on('input', function() {
     // editor.getSession().unfold(2, true);
     var content = this.session_.getValue()
-    // var re = /\/\*\* @type \{([A-Za-z_$.]+)\} ?\*\/\n(\s*)var/g;
-    // var re = /for \(var ([a-zA-Z_$]+) *\= *([-a-zA-Z$0-9.]+) *
-    //     ; *([a-zA-Z_$]+) *([<=>]+) *([-a-zA-Z$0-9.]+) *; *([a-zA-Z_$]+)(
-    //     --|\+\+) *\)/g;
-    // while(m = re.exec(content)) {
-    //   var annotationStartIndex = m.index
-    //   var annotationEndIndex = m[0].length + annotationStartIndex;
-    //   var startPosition = this.session_.getDocument().indexToPosition(
-    //       annotationStartIndex)
-    //   var endPosition = this.session_.getDocument().indexToPosition(
-    //       annotationEndIndex)
-    //   var endValue = m[5];
-    //   var placeholder = " \u25B6 loop " + m[1] + " : " + m[2] + " \u279C " +
-    //       endValue + " \u2630 ";
-    //   var markerRange = new Range(startPosition.row, startPosition.column,
-    //       endPosition.row, endPosition.column);
-    //   placeholder = new Fold(markerRange, placeholder)
-    //   placeholder.subType = "if_statement";
-    //   this.session_.addFold(placeholder, markerRange);
-    // }
 
     this.classSub_.matchAll(content);
     this.typeSub_.matchAll(content);
     this.varSub_.matchAll(content);
   }.bind(this));
-/*
-  this.session_.addEventListener("changeFold", function(e) {
-    return;
-    // console.log(e);
-    if (e.action == "remove") {
-      if (this.allowNextUnfold_) {
-        this.allowNextUnfold_ = false;
-        if (e.data.subType == 'blank_type_annotation' || e.data.subType ==
-            'type_annotation') {
-          var content = this.session_.getValue()
-          var startIndex = this.session_.getDocument().positionToIndex(
-              e.data.start);
-          var endIndex = this.session_.getDocument().positionToIndex(e.data.end);
-          var annotationText = content.substr(startIndex, endIndex);
-          // var re = /(@type \{)([^}]+)\}/;
-          var re = /(|\/\*\* @type \{[^}]+\} ?\*\/\n\s*\b)(var)/g;
-          m = re.exec(annotationText)
-          var introLength = m[1].length;
-          var typeName = m[2];
-          var annotationStartIndex = m.index + startIndex + introLength;
-          var annotationEndIndex = annotationStartIndex + typeName.length;
-          var startPosition = this.session_.getDocument().indexToPosition(
-              annotationStartIndex)
-          var endPosition = this.session_.getDocument().indexToPosition(
-              annotationEndIndex)
-          var markerRange = new Range(startPosition.row, startPosition.column,
-              endPosition.row, endPosition.column);
-          var placeholder = "" + typeName + "";
-          placeholder = new Fold(markerRange, placeholder)
-          placeholder.subType = 'unfolded_' + subType;
-          this.session_.addFold(placeholder, markerRange);
-        } else {
-          this.setupVisualization(editor);
-        }
-      } else {
-        e.preventDefault();
-        e.stopPropagation();
-        var range = e.data.range;
-        try {
-          this.session_.addFold(e.data, range);
-        } catch (e) {
 
-        }
-        // window.prompt("Type");
-        return false;
-      }
-    }
-  }.bind(this));*/
   this.session_.setValue(
       "//hello\n  /** @type {string} */\n  var pathSpec = 'hello'")
 };
