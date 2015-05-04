@@ -17,6 +17,7 @@ import SkeletonFileSystem from 'axiom/fs/stream/skeleton_file_system';
 import Transport from 'axiom/fs/stream/transport';
 import Channel from 'axiom/fs/stream/channel';
 import ExtensionStreams from 'axiom/fs/stream/extension_streams';
+import chromeCommand from 'chrome_command';
 
 /** @typedef AxiomEvent$$module$axiom$core$event */
 var AxiomEvent;
@@ -41,7 +42,7 @@ export var ChromeAgent = function() {
   var skeleton = new SkeletonFileSystem('extfs', jsfs, channel);
   jsfs.rootDirectory.mkdir('exe').then(function(jsdir) {
     // TODO (ericarnold): implement:
-    // jsdir.install({'chrome': chromeCommand});
+    jsdir.install({'chrome': chromeCommand});
     streams.listenAsExtension();
     streams.resume();
   }.bind(this));

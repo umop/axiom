@@ -362,8 +362,7 @@ module.exports = function(grunt) {
       },
       chrome_agent: {
         options: {
-          atBegin: true,
-          livereload: true
+          atBegin: true
         },
         files: ['/gruntfile.js',
                 'externs/**/*.js',
