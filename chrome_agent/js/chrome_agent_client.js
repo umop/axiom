@@ -71,31 +71,79 @@ chromeAgentClient.openApiOnlineDoc = function(api) {
 };
 
 /**
- * Request the Agent extension to invoke the given API with the given arguments
- * and options. The result of the invocation is passed back asynchronously.
+ * Invoke a Chrome API with the given name and arguments, and return the result
+ * If the API's name resolves to something different from a function, and there
+ * no arguments, the value of the resolved object is returned instead.
  * 
  * @param {!string} api
- * @param {!Array<*>} args
+ * @param {!Object<string, *>} args
  * @param {!{timeout: number}} options
  * @return {!Promise<*>} Result returned by the API.
  */
 chromeAgentClient.callApi = function(api, args, options) {
-  if (!/^chrome./.test(api))
-    api = 'chrome.' + api;
-  return chromeAgentClient.sendRequest_(
-    {
-      type: 'call_api',
-      api: api,
-      args: args,
-      options: options
+  return new Promise(function(resolve, reject) {
+    if (!api) {
+      return reject('No such API, or no permission to use it');
     }
-  );
+
+    if (typeof api !== 'function') {
+      // This can be an API property that the caller wants to read.
+      if (args.length > 0) {
+        return reject('This API is not a function: use with no arguments');
+      }
+      return resolve(api);
+    }
+
+    // Complete the promise either via a callback or a timeout.
+    var timedOut = false;
+    var timeout = null;
+    if (options.timeout) {
+      timeout = setTimeout(function() {
+        timedOut = true;
+        reject('Timed out');
+      }.bind(this), options.timeout);
+    }
+
+    var callback = function(result) {
+      if (!timedOut) {
+        clearTimeout(timeout);
+        if (chrome.runtime.lastError) {
+          reject(chrome.runtime.lastError);
+        } else {
+          resolve(result);
+        }
+      }
+    }.bind(this);
+
+    try {
+      // `args` is an array, so we must use `apply` to invoke the API. The API,
+      // however, requires a callback as one extra argument: append it to `args`.
+      // NOTE: Since the callback of this call will resolve/reject the outer
+      // Promise, make sure the following is the last call of this function.
+      api.apply(this, args.concat([callback]));
+      if (chrome.runtime.lastError) {
+        reject(chrome.runtime.lastError);
+      }
+    } catch (error) {
+      if (!timedOut) {
+        clearTimeout(timeout);
+        var match = BAD_API_INVOCATION_ERROR_RE_.exec(error);
+        if (match) {
+          // Massage this particularly frequent error message to be clearer.
+          reject(
+              'Wrong API arguments: expected ' + match[2] +
+              ' but got ' + match[1] + ' <= ' + JSON.stringify(args));
+        } else {
+          reject(error);
+        }
+      }
+    }
+  }.bind(this));
 };
 
 /**
- * Request the Agent extension to execute a script in the given tabs' 
- * "isolated world" (with full access to the DOM context but not the
- * JavaScript context).
+ * Execute a script in the given tabs' "isolated world" (with full access to
+ * the DOM context but not the JavaScript context).
  * 
  * The result of the executions is passed back as a single value for a single
  * requested tab, or as a map of form { tabId1: result1, ... } for multiple
@@ -117,18 +165,18 @@ chromeAgentClient.callApi = function(api, args, options) {
  * @param {!string} code
  * @param {!(Array<number>|string)} tabIds
  * @param {!{allFrames: boolean, runAt: string, timeout: number}} options
- * @return {!Promise<*>} Result returned by the API.
+ * @return {!Promise<Object<string, *>>}
  */
 chromeAgentClient.executeScriptInTabs = function(code, tabIds, options) {
-  return applyActionToTabs_(tabIds, executeScriptInTab_, [code, options]);
+  return this.applyActionToTabs_(tabIds, this.executeScriptInTab_, [code, options]);
 };
 
 /**
- * Request the Agent extension to insert the given CSS fragment into the given
- * list of tabs, with the given options. If there are any errors, they are
- * returned as a single string for a single requested tab, or as a map of form
- * { tabId1: error1, ... } for multiple requested tabs (special values 'all'
- * and 'window' are considered multiple tabs even if they resolve to just one).
+ * Insert the given CSS fragment into the given list of tabs, with the given
+ * options. If there are any errors, they are returned as a single string for
+ * a single requested tab, or as a map of form { tabId1: error1, ... } for
+ * multiple requested tabs (special values 'all' and 'window' are considered
+ * multiple tabs even if they resolve to just one).
  * 
  * Note that the author styles take precedence over any iserted styles, so
  * if there is a clash for some setting, the inserted CSS will have no effect
@@ -137,87 +185,10 @@ chromeAgentClient.executeScriptInTabs = function(code, tabIds, options) {
  * @param {!string} css
  * @param {!(Array<number>|string)} tabIds
  * @param {!{allFrames: boolean, runAt: string, timeout: number}} options
- * @return {!Promise<*>} Result returned by the API.
+ * @return {!Promise<Object<string, *>>}
  */
 chromeAgentClient.insertCssIntoTabs = function(css, tabIds, options) {
-  return chromeAgentClient.sendRequest_(
-    {
-      type: 'insert_css',
-      tabIds: tabIds,
-      css: css,
-      options: options
-    }
-  );
-};
-
-/**
- * Send the given request to perform some service to the Agent extension and
- * return back the result.
- *
- * @param {!Object<string, *>} request
- * @return {!Promise<*>} Result returned by the API.
- */
-chromeAgentClient.sendRequest_ = function(request) {
-  return new Promise(function(resolve, reject) {
-    chrome.runtime.sendMessage(
-      chromeAgentClient.AGENT_APP_ID_,
-      request,
-      {}, // options
-      function(response) {
-        if (chrome.runtime.lastError) {
-          reject(new chromeAgentClient.ErrorSendingRequest(
-              chrome.runtime.lastError.message));
-        } else if (!response.success) {
-          reject(new chromeAgentClient.ErrorExecutingRequest(response.error));
-        } else {
-          resolve(response.result);
-        }
-      }
-    );
-  });
-};
-
-/**
- * Route a request to an appropriate worker function, wait for it to return
- * a result, then asynchronously send it in a response.
- * 
- * @private
- * @param {!Object<string, *>} request
- * @param {function(*): void} sendResponse
- * @return {void}
- */
-var handleRequest_ = function(request, sendResponse) {
-  var promise =
-      request.type === 'call_api' ?
-          callApi_(resolveApi_(request.api), request.args, request.options) :
-      request.type === 'insert_css' ?
-          insertCssIntoTabs_(request.tabIds, request.css, request.options) :
-          Promise.reject('Unrecognized request type "' + request.type + '"');
-
-  promise.then(function(result) {
-    sendResponse({success: true, result: result});
-  }).catch(function(error) {
-    sendResponse({success: false, error: error.message ? error.message : error});
-  });
-};
-
-/**
- * Resolve an API name to a corresponding API object, if any. This is generic,
- * i.e. not restricted to just the Chrome APIs. 
- * 
- * @private
- * @param {!string} apiName
- * @return {?Object} Resolved API object or null.
- */
-var resolveApi_ = function(apiName) {
-  var nameParts = apiName.split('.');
-  var resolvedApi = window;
-  for (var i = 0; i < nameParts.length; ++i) {
-    resolvedApi = resolvedApi[nameParts[i]];
-    if (!resolvedApi)
-      return null;
-  }
-  return resolvedApi;
+  return this.applyActionToTabs_(tabIds, this.insertCssIntoTab_, [css, options]);
 };
 
 /**
@@ -228,78 +199,6 @@ var resolveApi_ = function(apiName) {
  */
 var BAD_API_INVOCATION_ERROR_RE_ =
     /^Error: Invocation of form (.+) doesn't match definition (.+)$/;
-
-/**
- * Invoke a Chrome API with the given name and arguments, and return the result
- * If the API's name resolves to something different from a function, and there
- * no arguments, the value of the resolved object is returned instead.
- * 
- * @private
- * @param {Object} api
- * @param {!Object<string, *>} args
- * @param {{timeout: number}} options
- * @return {!Promise<*>} Result of the API call.
- */
-var callApi_ = function(api, args, options) {
-  return new Promise(function(resolve, reject) {
-    if (!api) {
-      return reject('No such API, or no permission to use it');
-    }
-
-    if (typeof api !== 'function') {
-      // This can be an API property that the caller wants to read.
-      if (args.length > 0) {
-        return reject('This API is not a function: use with no arguments');
-      }
-      return resolve(api);
-    }
-
-    // Complete the promise either via a callback or a timeout.
-    var timedOut = false;
-    var timeout = null;
-    if (options.timeout) {
-      timeout = setTimeout(function() {
-        timedOut = true;
-        reject('Timed out');
-      }, options.timeout);
-    }
-
-    var callback = function(result) {
-      if (!timedOut) {
-        clearTimeout(timeout);
-        if (chrome.runtime.lastError) {
-          reject(chrome.runtime.lastError);
-        } else {
-          resolve(result);
-        }
-      }
-    };
-
-    try {
-      // `args` is an array, so we must use `apply` to invoke the API. The API,
-      // however, requires a callback as one extra argument: append it to `args`.
-      // NOTE: Since the callback of this call will resolve/reject the outer
-      // Promise, make sure the following is the last call of this function.
-      api.apply(null, args.concat([callback]));
-      if (chrome.runtime.lastError) {
-        reject(chrome.runtime.lastError);
-      }
-    } catch (error) {
-      if (!timedOut) {
-        clearTimeout(timeout);
-        var match = BAD_API_INVOCATION_ERROR_RE_.exec(error);
-        if (match) {
-          // Massage this particularly frequent error message to be clearer.
-          reject(
-              'Wrong API arguments: expected ' + match[2] +
-              ' but got ' + match[1] + ' <= ' + JSON.stringify(args));
-        } else {
-          reject(error);
-        }
-      }
-    }
-  });
-};
 
 /**
  * Execute a script in the given tab's "isolated world" (with full access to
@@ -328,7 +227,7 @@ var callApi_ = function(api, args, options) {
  * @param {{allFrames: boolean, runAt: string, timeout: number}} options
  * @return {!Promise<*>}
  */
-var executeScriptInTab_ = function(tabId, code, options) {
+chromeAgentClient.executeScriptInTab_ = function(tabId, code, options) {
   // TODO(ussuri): Catch and return possible exceptions in the user's code.
   // The following didn't work:
   // code = 'try {' + code + '} catch (err) { console.log("CAUGHT"); err; }';
@@ -338,40 +237,10 @@ var executeScriptInTab_ = function(tabId, code, options) {
     runAt: options.runAt || 'document_idle'
   };
 
-  return callApi_(chrome.tabs.executeScript, [tabId, details], options)
+  return this.callApi(chrome.tabs.executeScript, [tabId, details], options)
     .then(function(result) {
       return details.allFrames ? result : result[0];
-    });
-};
-
-/**
- * Execute a script in the given tabs' "isolated world" (with full access to
- * the DOM context but not the JavaScript context).
- * 
- * The result of the executions is passed back as a single value for a single
- * requested tab, or as a map of form { tabId1: result1, ... } for multiple
- * requested tabs (special values 'all' and 'window' are considered multiple
- * tabs even if they resolve to just one).
- * 
- * The execution is resilient to errors and/or timeouts in individual tabs,
- * which can happen for various reasons (the script itself never returns or
- * attempts to return too much data; a tab may be hung ("Aw, snap!"); a tab may
- * be a special chrome:// tab, in which scripts are prohibited and error out).
- * Such errors are returned in the results map as special string values.
- *
- * Request the Agent extension to execute the given script in the given list
- * of tabs, with the given options. The result of the executions is passed back 
- * as a single value for a single requested tab, or as a map of form
- * { tabId1: result1, ... } for multiple requested tabs (special values 'all'
- * and 'window' are considered multiple tabs even if they resolve to just one).
- *
- * @private
- * @param {!(Array<number>|string)} tabIds
- * @param {!string} code
- * @param {{allFrames: boolean, runAt: string, timeout: number}} options
- * @return {!Promise<Object<string, *>>}
- */
-var executeScriptInTabs_ = function(tabIds, code, options) {
+    }.bind(this));
 };
 
 /**
@@ -384,34 +253,13 @@ var executeScriptInTabs_ = function(tabIds, code, options) {
  * @param {{allFrames: boolean, runAt: string, timeout: number}} options
  * @return {!Promise<*>}
  */
-var insertCssIntoTab_ = function(tabId, css, options) {
+chromeAgentClient.insertCssIntoTab_ = function(tabId, css, options) {
   var details = {
     code: css,
     allFrames: options.allFrames || false,
     runAt: options.runAt || 'document_idle'
   };
-  return callApi_(chrome.tabs.insertCSS, [tabId, details], options);
-};
-
-/**
- * Insert the given CSS fragment into the given list of tabs, with the given
- * options. If there are any errors, they are returned as a single string for
- * a single requested tab, or as a map of form { tabId1: error1, ... } for
- * multiple requested tabs (special values 'all' and 'window' are considered
- * multiple tabs even if they resolve to just one).
- * 
- * Note that the author styles take precedence over any iserted styles, so
- * if there is a clash for some setting, the inserted CSS will have no effect
- * (this is the limitation of the underlying Chrome API).
- *
- * @private
- * @param {!(Array<number>|string)} tabIds
- * @param {!string} css
- * @param {{allFrames: boolean, runAt: string, timeout: number}} options
- * @return {!Promise<Object<string, *>>}
- */
-var insertCssIntoTabs_ = function(tabIds, css, options) {
-  return applyActionToTabs_(tabIds, insertCssIntoTab_, [css, options]);
+  return this.callApi(chrome.tabs.insertCSS, [tabId, details], options);
 };
 
 /**
@@ -427,29 +275,29 @@ var insertCssIntoTabs_ = function(tabIds, css, options) {
  * @param {!Array<*>} args
  * @return {!Promise<Object<string, *>>}
  */
-var applyActionToTabs_ = function(tabIds, action, args) {
+chromeAgentClient.applyActionToTabs_ = function(tabIds, action, args) {
   // TODO(ussuri): Somehow return mixed results/errors, while explicitly
   // indicating to callers that error(s) have occurred.
-  return normalizeTabIds_(tabIds).then(function(nTabIds) {
+  return this.normalizeTabIds_(tabIds).then(function(nTabIds) {
     var results = {};
 
     var applyAction = function(tabId) {
-      return action.apply(null, [tabId].concat(args))
+      return action.apply(this, [tabId].concat(args))
         .then(function(result) {
           results[tabId] = result;
-        }).catch(function(error) {
+        }.bind(this)).catch(function(error) {
           results[tabId] =
               '<ERROR: ' + (error.message ? error.message : error) + '>';
-        });
-    };
+        }.bind(this));
+    }.bind(this);
 
     var promises = nTabIds.map(function(tabId) {
       return applyAction(tabId);
-    });
+    }.bind(this));
     return Promise.all(promises).then(function(_) {
       return results;
-    });
-  });
+    }.bind(this));
+  }.bind(this));
 };
 
 /**
@@ -460,11 +308,11 @@ var applyActionToTabs_ = function(tabIds, action, args) {
  * @param {!(Array<number>|string)} tabIds
  * @return {!Promise<!Array<number>>}
  */
-var normalizeTabIds_ = function(tabIds) {
+chromeAgentClient.normalizeTabIds_ = function(tabIds) {
   if (!tabIds || tabIds === 'all') {
-    return getAllTabIds_(false);
+    return this.getAllTabIds_(false);
   } else if (tabIds === 'window') {
-    return getAllTabIds_(true);
+    return this.getAllTabIds_(true);
   } else {
     return /**@type {?}*/(Promise.resolve(tabIds));
   }
@@ -478,15 +326,15 @@ var normalizeTabIds_ = function(tabIds) {
  * @param {boolean} thisWindowOnly
  * @return {!Promise<!Array<number>>} IDs of all the open tabs in all the windows.
  */
-var getAllTabIds_ = function(thisWindowOnly) {
+chromeAgentClient.getAllTabIds_ = function(thisWindowOnly) {
   return new Promise(function(resolve, reject) {
     // NOTE: {thisWindowOnly: false} means "other windows", but we want "all",
     // so use {}.
     var options = thisWindowOnly ? {currentWindow: true} : {};
     chrome.tabs.query(options, function(tabs) {
       resolve(tabs.map(function(tab) { return tab.id; }));
-    });
-  });
+    }.bind(this));
+  }.bind(this));
 };
 
 /**
