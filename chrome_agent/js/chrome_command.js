@@ -14,7 +14,7 @@
 
 import AxiomError from 'axiom/core/error';
 import Completer from 'axiom/core/completer';
-import chromeAgentClient from 'wash/chrome_agent_client';
+import chromeAgentClient from 'chrome_agent_client';
 
 /** @typedef JsExecuteContext$$module$axiom$fs$js$execute_context */
 var JsExecuteContext;
