@@ -183,10 +183,10 @@ export var main = function(cx) {
     };
 
     var commandPromise =
-        api ?    callApi_(freeArgs[0], freeArgs.slice(1), options) :
-        list ?   executeScript_('document.title', tabIds, options, pluck) :
-        script ? executeScript_(freeArgs[0], tabIds, options, pluck) :
-        css ?    insertCss_(freeArgs[0], tabIds, options, pluck) :
+        api ?    callApiCommand_(freeArgs[0], freeArgs.slice(1), options) :
+        list ?   executeScriptCommand_('document.title', tabIds, options, pluck) :
+        script ? executeScriptCommand_(freeArgs[0], tabIds, options, pluck) :
+        css ?    insertCssCommand_(freeArgs[0], tabIds, options, pluck) :
                 null;
 
     commandPromise
@@ -269,13 +269,32 @@ var getFreeArgs = function(cx) {
 };
 
 /**
+ * Resolve an API name to a corresponding API object, if any. This is generic,
+ * i.e. not restricted to just the Chrome APIs. 
+ * 
+ * @private
+ * @param {!string} apiName
+ * @return {?Object} Resolved API object or null.
+ */
+var resolveApi_ = function(apiName) {
+  var nameParts = apiName.split('.');
+  var resolvedApi = window;
+  for (var i = 0; i < nameParts.length; ++i) {
+    resolvedApi = resolvedApi[nameParts[i]];
+    if (!resolvedApi)
+      return null;
+  }
+  return resolvedApi;
+};
+
+/**
  * @param {!string} api
  * @param {!Array<*>} apiArgs
  * @param {!{timeout: number}} options
  * @return {!Promise<*>}
  */
-var callApi_ = function(api, apiArgs, options) {
-  return chromeAgentClient.callApi(api, apiArgs, options);
+var callApiCommand_ = function(api, apiArgs, options) {
+  return chromeAgentClient.callApi(resolveApi_(api), apiArgs, options);
 };
 
 /**
@@ -286,7 +305,7 @@ var callApi_ = function(api, apiArgs, options) {
  *   value, instead of a {tabID: result, ...} map.
  * @return {!Promise<*>}
  */
-var executeScript_ = function(code, tabIds, options, pluck) {
+var executeScriptCommand_ = function(code, tabIds, options, pluck) {
   return sanitizeTabIds_(tabIds)
     .then(function(sTabIds) {
       return chromeAgentClient.executeScriptInTabs(code, sTabIds, options)
@@ -304,7 +323,7 @@ var executeScript_ = function(code, tabIds, options, pluck) {
  *   value, instead of a {tabID: result, ...} map.
  * @return {!Promise<*>}
  */
-var insertCss_ = function(css, tabIds, options, pluck) {
+var insertCssCommand_ = function(css, tabIds, options, pluck) {
   return sanitizeTabIds_(tabIds)
     .then(function(sTabIds) {
       return chromeAgentClient.insertCssIntoTabs(css, sTabIds, options)
