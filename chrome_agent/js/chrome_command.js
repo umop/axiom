@@ -14,7 +14,7 @@
 
 import AxiomError from 'axiom/core/error';
 import Completer from 'axiom/core/completer';
-import chromeAgentClient from 'chrome_agent_client';
+import chromeAgent from 'chrome_agent_client';
 
 /** @typedef JsExecuteContext$$module$axiom$fs$js$execute_context */
 var JsExecuteContext;
@@ -163,14 +163,14 @@ export var main = function(cx) {
     }
 
     if (installAgent) {
-      chromeAgentClient.installAgent();
+      chromeAgent.installAgent();
       cx.closeOk();
       return;
     }
 
     if (apiDoc) {
       freeArgs.forEach(function(arg) {
-        chromeAgentClient.openApiOnlineDoc(arg.toString());
+        chromeAgent.openApiOnlineDoc(arg.toString());
       });
       cx.closeOk();
       return;
@@ -199,12 +199,12 @@ export var main = function(cx) {
         }
         cx.closeOk();
       }).catch(function(error) {
-        if (error instanceof chromeAgentClient.ErrorSendingRequest) {
+        if (error instanceof chromeAgent.ErrorSendingRequest) {
           cx.closeError(new AxiomError.Missing(
               'This command requires Chrome Agent extension to be installed. ' +
               'Rerun with the --install-agent switch to install ' +
               '(' + error.message + ')'));
-        } else if (error instanceof chromeAgentClient.ErrorExecutingRequest) {
+        } else if (error instanceof chromeAgent.ErrorExecutingRequest) {
           cx.closeError(new AxiomError.Runtime(error.message));
         } else {
           cx.closeError(error);
@@ -297,7 +297,7 @@ var callApiCommand_ = function(api, apiArgs, options) {
   if (!/^chrome./.test(api))
     api = 'chrome.' + api;
 
-  return chromeAgentClient.callApi(resolveApi_(api), apiArgs, options);
+  return chromeAgent.callApi(resolveApi_(api), apiArgs, options);
 };
 
 /**
@@ -311,7 +311,7 @@ var callApiCommand_ = function(api, apiArgs, options) {
 var executeScriptCommand_ = function(code, tabIds, options, pluck) {
   return sanitizeTabIds_(tabIds)
     .then(function(sTabIds) {
-      return chromeAgentClient.executeScriptInTabs(code, sTabIds, options)
+      return chromeAgent.executeScriptInTabs(code, sTabIds, options)
         .then(function(/** !Object<string, *> */tabResults) {
           return formatTabResults_(tabResults, pluck);
         });
@@ -329,7 +329,7 @@ var executeScriptCommand_ = function(code, tabIds, options, pluck) {
 var insertCssCommand_ = function(css, tabIds, options, pluck) {
   return sanitizeTabIds_(tabIds)
     .then(function(sTabIds) {
-      return chromeAgentClient.insertCssIntoTabs(css, sTabIds, options)
+      return chromeAgent.insertCssIntoTabs(css, sTabIds, options)
         .then(function(/** !Object<string, *>*/tabResults) {
           return formatTabResults_(tabResults, pluck);
         });
