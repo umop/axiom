@@ -29,7 +29,7 @@ var AxiomEvent;
  *
  * @constructor
  */
-export var ChromeAgent = function() {
+export var ChromeFileServer = function() {
   var jsfs = new JsFileSystem();
   var fsm = jsfs.fileSystemManager;
 

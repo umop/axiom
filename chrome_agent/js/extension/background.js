@@ -15,4 +15,4 @@
 __axiomExport__(this);
 
 // Create a ChromeFileServer and start it listening for a connection.
-var chromeFileServer = new chrome_agent.ChromeFileServer();
+var chromeFileServer = new chrome_file_server.ChromeFileServer();
