@@ -29,29 +29,33 @@ var AxiomEvent;
  * @constructor
  */
 export var ChromeAgent = function() {
-  var jsfs = new JsFileSystem();
-  var fsm = jsfs.fileSystemManager;
 
   var streams = new ExtensionStreams();
   // var transport = new Transport(
   //     'PostMessageTransport',
   //     streams.readableStream,
   //     streams.writableStream);
-  jsfs.rootDirectory.mkdir('exe').then(function(jsdir) {
-    // TODO (ericarnold): implement:
-    // jsdir.install({'chrome': chromeCommand});
-    streams.listenAsExtension();
-    streams.resume();
-  }.bind(this));
+  // TODO (ericarnold): implement:
+  // jsdir.install({'chrome': chromeCommand});
+  streams.listenAsExtension();
+  streams.resume();
 
   /** @const @type {!AxiomEvent} */
   this.onConnected = streams.onConnected;
   streams.onConnected.addListener(function (event) {
-    var transport = new Transport(
-        'PostMessageTransport',
-        streams.readableStream,
-        streams.writableStream);
-    var channel = new Channel('PostMessageChannel', 'ext', transport);
-    var skeleton = new SkeletonFileSystem('extfs', jsfs, channel);
+    var jsfs = new JsFileSystem();
+    var fsm = jsfs.fileSystemManager;
+
+    jsfs.rootDirectory.mkdir('exe').then(function(jsdir) {
+      var transport = new Transport(
+          'PostMessageTransport',
+          streams.readableStream,
+          streams.writableStream);
+      var channel = new Channel('PostMessageChannel', 'ext', transport);
+      var skeleton = new SkeletonFileSystem('extfs', jsfs, channel);
+    }.bind(this));
   }.bind(this));
+
+  streams.onDisconnected.addListener(function (event) {
+  });
 }
