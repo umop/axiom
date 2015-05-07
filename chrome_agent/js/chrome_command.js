@@ -294,6 +294,9 @@ var resolveApi_ = function(apiName) {
  * @return {!Promise<*>}
  */
 var callApiCommand_ = function(api, apiArgs, options) {
+  if (!/^chrome./.test(api))
+    api = 'chrome.' + api;
+
   return chromeAgentClient.callApi(resolveApi_(api), apiArgs, options);
 };
 
