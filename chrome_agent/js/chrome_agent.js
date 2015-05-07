@@ -33,12 +33,10 @@ export var ChromeAgent = function() {
   var fsm = jsfs.fileSystemManager;
 
   var streams = new ExtensionStreams();
-  var transport = new Transport(
-      'PostMessageTransport',
-      streams.readableStream,
-      streams.writableStream);
-  var channel = new Channel('PostMessageChannel', 'ext', transport);
-  var skeleton = new SkeletonFileSystem('extfs', jsfs, channel);
+  // var transport = new Transport(
+  //     'PostMessageTransport',
+  //     streams.readableStream,
+  //     streams.writableStream);
   jsfs.rootDirectory.mkdir('exe').then(function(jsdir) {
     // TODO (ericarnold): implement:
     // jsdir.install({'chrome': chromeCommand});
@@ -48,4 +46,12 @@ export var ChromeAgent = function() {
 
   /** @const @type {!AxiomEvent} */
   this.onConnected = streams.onConnected;
+  streams.onConnected.addListener(function (event) {
+    var transport = new Transport(
+        'PostMessageTransport',
+        streams.readableStream,
+        streams.writableStream);
+    var channel = new Channel('PostMessageChannel', 'ext', transport);
+    var skeleton = new SkeletonFileSystem('extfs', jsfs, channel);
+  }.bind(this));
 }
