@@ -29,23 +29,42 @@ var AxiomEvent;
  * @constructor
  */
 export var ChromeAgent = function() {
+  this.streams = null;
+  this.handleConnected_ = this.handleConnected_.bind(this);
+  this.handleDisconnected_ = this.handleDisconnected_.bind(this);
+  this.setupConnection();
+}
+
+ChromeAgent.prototype.setupConnection = function() {
+  // TODO (ericarnold): This will be leaked.  We need to make sure there is a weak
+  // reference somewhere in the transport, channel, filesystem, stream chain.
+  this.streams = new ExtensionStreams();
+  this.streams.startListening(true);
+  this.streams.resume();
+  this.streams.onConnect.addListener(this.handleConnected_);
+  this.streams.onDisconnect.addListener(this.handleDisconnected_);
+
+  /** @const @type {!AxiomEvent} */
+  this.onConnect = this.streams.onConnect;
+
+  /** @const @type {!AxiomEvent} */
+  this.onDisconnect = this.streams.onDisconnect;
+};
+
+ChromeAgent.prototype.handleDisconnected_ = function(event) {
+  this.setupConnection();
+};
+
+ChromeAgent.prototype.handleConnected_ = function(event) {
   var jsfs = new JsFileSystem();
   var fsm = jsfs.fileSystemManager;
 
-  var streams = new ExtensionStreams();
-  var transport = new Transport(
-      'PostMessageTransport',
-      streams.readableStream,
-      streams.writableStream);
-  var channel = new Channel('PostMessageChannel', 'ext', transport);
-  var skeleton = new SkeletonFileSystem('extfs', jsfs, channel);
   jsfs.rootDirectory.mkdir('exe').then(function(jsdir) {
-    // TODO (ericarnold): implement:
-    // jsdir.install({'chrome': chromeCommand});
-    streams.listenAsExtension();
-    streams.resume();
+    var transport = new Transport(
+        'PostMessageTransport',
+        this.streams.readableStream,
+        this.streams.writableStream);
+    var channel = new Channel('PostMessageChannel', 'ext', transport);
+    var skeleton = new SkeletonFileSystem('extfs', jsfs, channel);
   }.bind(this));
-
-  /** @const @type {!AxiomEvent} */
-  this.onConnected = streams.onConnected;
 }
